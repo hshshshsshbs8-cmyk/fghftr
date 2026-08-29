@@ -1,12 +1,1 @@
-const KEY = 'larplab_state';
-const defaults = { enabled:true, robux:999999, username:'LarpPlayer', displayName:'Larp Player', premium:true, verified:false, followers:12345, inventory:[], equipped:[] };
-chrome.storage.local.get(KEY).then(({[KEY]: saved}) => {
-  const s = {...defaults, ...(saved || {})};
-  robux.value = s.robux; username.value = s.username; displayName.value = s.displayName;
-});
-save.onclick = async () => {
-  const current = (await chrome.storage.local.get(KEY))[KEY] || defaults;
-  await chrome.storage.local.set({[KEY]: {...current, robux:Number(robux.value)||0, username:username.value||'LarpPlayer', displayName:displayName.value||'Larp Player'}});
-  save.textContent = 'Saved ✓';
-  setTimeout(() => save.textContent = 'Save local profile', 900);
-};
+const KEY='larplab_state';const defaults={enabled:true,robux:999999,username:'LarpPlayer',displayName:'Larp Player',premium:true,verified:false,followers:12345,inventory:[],equipped:[]};const $=id=>document.getElementById(id);let state={...defaults};async function load(){const x=await chrome.storage.local.get(KEY);state={...defaults,...(x[KEY]||{})};render()}async function save(){await chrome.storage.local.set({[KEY]:state});render()}function render(){ $('robux').textContent=Number(state.robux||0).toLocaleString();$('username').value=state.username;$('displayName').value=state.displayName;$('premium').checked=!!state.premium;$('verified').checked=!!state.verified;$('items').innerHTML=state.inventory.map((x,i)=>`<li><span>${escapeHtml(x.name)} <small>#${escapeHtml(String(x.id||'local'))}</small></span><button data-remove="${i}">×</button></li>`).join('')||'<li><span>No simulated items</span></li>'}function escapeHtml(v){return v.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}$('max').onclick=()=>{state.robux=999999;save()};$('add').onclick=()=>{const name=$('itemName').value.trim();if(!name)return;state.inventory.push({name,id:$('itemId').value.trim()||'local-'+Date.now(),equipped:false});$('itemName').value='';$('itemId').value='';save()};$('items').onclick=e=>{const i=e.target.dataset.remove;if(i!==undefined){state.inventory.splice(Number(i),1);save()}};$('apply').onclick=async()=>{state.username=$('username').value.trim()||'LarpPlayer';state.displayName=$('displayName').value.trim()||'Larp Player';state.premium=$('premium').checked;state.verified=$('verified').checked;state.enabled=true;await save();chrome.tabs.query({active:true,currentWindow:true}).then(t=>t[0]?.id&&chrome.tabs.sendMessage(t[0].id,{type:'LARPLAB_APPLY'}).catch(()=>{}))};$('reset').onclick=()=>{state={...defaults,inventory:[],equipped:[]};save()};load();
