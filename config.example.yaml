@@ -1,0 +1,64 @@
+# Copy this file to config/protected.yaml (or run `scrubpup init`).
+# It is encrypted with Fernet after the first load; the key lives in
+# config/.scrubpup.key (mode 600) or in the SCRUBPUP_KEY environment variable.
+#
+# Only list identifiers that belong to you.
+---
+identity:
+  # Your legal / commonly listed name - used for broker searches and letters.
+  name: "Jane Q. Persona"
+
+  # Every email address you want monitored.
+  emails:
+    - jane.persona@example.com
+    - jane@work.example.org
+
+  # Phone numbers in any format; digits are what matter.
+  phones:
+    - "+1-555-0143-7788"
+
+  # Usernames to look for on GitHub, Reddit, paste sites and archives.
+  usernames:
+    - janepersona
+
+  # Postal addresses that appear in people-search listings.
+  addresses:
+    - "742 Evergreen Terrace, Springfield"
+
+  # Social handles; treated the same way as usernames.
+  social_handles:
+    - jpersona
+
+settings:
+  # How often `scrubpup watch` re-scans.
+  scan_interval_hours: 24
+
+  # Global HTTP rate limit shared by every source (requests per second).
+  rate_limit_per_sec: 2.0
+
+  # Toggle individual scan sources. Broker page grepping is off by default
+  # because it sends one request per broker.
+  sources:
+    duckduckgo: true
+    github: true
+    reddit: true
+    archive: true
+    pastes: true
+    brokers: false
+
+  # Alert channels. Every configured channel receives every event.
+  notifier:
+    terminal: true
+
+    # SMTP email. The password is read from the environment variable named in
+    # password_env - never store it in this file.
+    # email:
+    #   smtp_host: smtp.example.com
+    #   smtp_port: 587
+    #   username: jane.persona@example.com
+    #   password_env: SCRUBPUP_SMTP_PASSWORD
+    #   from: jane.persona@example.com
+    #   to: jane.persona@example.com
+
+    # discord_webhook: https://discord.com/api/webhooks/...
+    # slack_webhook: https://hooks.slack.com/services/...
