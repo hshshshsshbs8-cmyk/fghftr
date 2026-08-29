@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# never commit personal data or keys
+config/protected.yaml
+config/.scrubpup.key
+data/
+evidence/
+reports/
+outbox/
+demo-workspace/
