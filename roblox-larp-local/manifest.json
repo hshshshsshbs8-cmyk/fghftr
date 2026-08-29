@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "LarpLab — Roblox UI Simulator",
+  "version": "0.1.0",
+  "description": "Local-only Roblox profile, balance, inventory, and avatar-preview simulator for UI testing and roleplay.",
+  "permissions": ["storage"],
+  "action": {"default_popup": "popup.html", "default_title": "LarpLab"},
+  "content_scripts": [{
+    "matches": ["https://www.roblox.com/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }],
+  "icons": {}
+}
