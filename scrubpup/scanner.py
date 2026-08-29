@@ -17,7 +17,7 @@ from urllib.parse import quote, quote_plus
 from bs4 import BeautifulSoup
 
 from .config import Config
-from .utils import HttpClient, data_dir, get_logger, redact, utcnow
+from .utils import HttpClient, HttpResponse, data_dir, get_logger, redact, utcnow
 
 log = get_logger("scrubpup.scanner")
 
@@ -89,13 +89,43 @@ class Scanner:
     def __init__(self, config: Config, *, client: HttpClient | None = None) -> None:
         self.config = config
         self.client = client or HttpClient(rate=config.settings.rate_limit_per_sec)
+        self.source_health: dict[str, str] = {}
+
+    def _usable(
+        self,
+        source: str,
+        resp: HttpResponse | None,
+        value: str,
+        *,
+        absent_status: int | None = None,
+    ) -> bool:
+        """Record whether ``source`` answered, so an empty result is not read as clean.
+
+        Public endpoints throttle datacenter IPs aggressively; a blocked source
+        must be reported instead of silently contributing zero findings.
+        ``absent_status`` marks a status code that means "nothing here" rather
+        than "blocked" (Reddit answers 404 for unknown users).
+        """
+        if resp is None:
+            self.source_health[source] = "unreachable"
+            log.warning("%s unreachable for %s", source, redact(value))
+            return False
+        if absent_status is not None and resp.status == absent_status:
+            self.source_health.setdefault(source, "ok")
+            return False
+        if resp.status != 200:
+            self.source_health[source] = f"blocked (HTTP {resp.status})"
+            log.warning("%s blocked (HTTP %s) for %s", source, resp.status, redact(value))
+            return False
+        self.source_health.setdefault(source, "ok")
+        return True
 
     # -- sources -----------------------------------------------------------
 
     def duckduckgo(self, kind: str, value: str) -> list[Finding]:
         query = quote_plus(f'"{value}"')
         resp = self.client.get(f"https://html.duckduckgo.com/html/?q={query}")
-        if not resp or resp.status != 200:
+        if not self._usable("duckduckgo", resp, value):
             return []
         soup = BeautifulSoup(resp.text, "lxml")
         findings = []
@@ -118,7 +148,7 @@ class Scanner:
         sites = " OR ".join(f"site:{s}" for s in PASTE_SITES)
         query = quote_plus(f'"{value}" ({sites})')
         resp = self.client.get(f"https://html.duckduckgo.com/html/?q={query}")
-        if not resp or resp.status != 200:
+        if not self._usable("paste-sites", resp, value):
             return []
         soup = BeautifulSoup(resp.text, "lxml")
         findings = []
@@ -136,9 +166,7 @@ class Scanner:
         query = quote_plus(f'"{value}"')
         url = f"https://api.github.com/search/code?q={query}&per_page=10"
         resp = self.client.get(url, headers={"Accept": "application/vnd.github+json"})
-        if not resp or resp.status != 200:
-            if resp:
-                log.info("github search unavailable (HTTP %s) for %s", resp.status, redact(value))
+        if not self._usable("github", resp, value):
             return []
         try:
             items = json.loads(resp.text).get("items", [])
@@ -161,7 +189,7 @@ class Scanner:
             return []
         url = f"https://www.reddit.com/user/{quote(value)}/about.json"
         resp = self.client.get(url, headers={"Accept": "application/json"})
-        if not resp or resp.status != 200:
+        if not self._usable("reddit", resp, value, absent_status=404):
             return []
         try:
             data = json.loads(resp.text).get("data", {})
@@ -190,7 +218,7 @@ class Scanner:
             f"?url=*{quote(needle)}*&output=json&limit=25&collapse=urlkey&filter=statuscode:200"
         )
         resp = self.client.get(url)
-        if not resp or resp.status != 200:
+        if not self._usable("archive.org", resp, value):
             return []
         try:
             rows = json.loads(resp.text)

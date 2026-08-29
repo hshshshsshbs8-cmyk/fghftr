@@ -142,25 +142,51 @@ def prefill_form(broker: Broker, values: dict[str, str], *, screenshot_dir: Path
     path = ensure_dir(screenshot_dir) / f"{slugify(broker.key)}-{utcnow().replace(':', '')}.png"
     filled: list[str] = []
     with sync_playwright() as pw:
+        # Broker pages serve a stripped or challenge page to headless Chromium,
+        # so a real browser window is used.
         browser = pw.chromium.launch(headless=False)
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.goto(broker.opt_out_url, wait_until="load", timeout=45_000)
+            _settle(page)
             for key, value in values.items():
                 selector = selectors.get(key)
-                if not selector:
-                    continue
-                try:
-                    element = page.query_selector(selector)
-                    if element:
-                        element.fill(value)
-                        filled.append(key)
-                except Exception as exc:  # noqa: BLE001 - best-effort prefill
-                    log.debug("could not fill %s on %s: %s", key, broker.key, exc)
+                if selector and _fill_field(page, selector, value, key=key, broker=broker.key):
+                    filled.append(key)
+            # Client-side hydration can clear inputs after the first fill.
+            page.wait_for_timeout(1_500)
+            for key in list(filled):
+                selector = selectors[key]
+                if not _fill_field(page, selector, values[key], key=key, broker=broker.key):
+                    filled.remove(key)
             page.screenshot(path=str(path), full_page=True)
         finally:
             browser.close()
     return str(path), f"pre-filled: {', '.join(filled) or 'nothing matched'} (submit manually)"
+
+
+def _settle(page) -> None:
+    """Wait for network activity to stop so hydration cannot wipe our input."""
+    try:
+        page.wait_for_load_state("networkidle", timeout=15_000)
+    except Exception as exc:  # noqa: BLE001 - a busy page is still fillable
+        log.debug("page never went idle: %s", exc)
+
+
+def _fill_field(page, selector: str, value: str, *, key: str, broker: str) -> bool:
+    """Fill the first visible, editable match and confirm the value stuck."""
+    for element in page.query_selector_all(selector):
+        try:
+            if not (element.is_visible() and element.is_editable()):
+                continue
+            if element.input_value() == value:
+                return True
+            element.fill(value)
+            if element.input_value() == value:
+                return True
+        except Exception as exc:  # noqa: BLE001 - best-effort prefill
+            log.debug("could not fill %s on %s: %s", key, broker, exc)
+    return False
 
 
 def prepare(

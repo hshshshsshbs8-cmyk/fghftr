@@ -145,7 +145,75 @@ def test_failed_requests_are_skipped(persona):
         def request(self, method: str, url: str, **kwargs) -> HttpResponse | None:
             return None
 
-    assert scanner.Scanner(persona, client=DeadClient()).scan() == []
+    scan = scanner.Scanner(persona, client=DeadClient())
+    assert scan.scan() == []
+    assert set(scan.source_health.values()) == {"unreachable"}
+
+
+def test_blocked_sources_are_reported_not_silently_empty(persona):
+    class BlockedClient(DemoClient):
+        def request(self, method: str, url: str, **kwargs) -> HttpResponse | None:
+            return HttpResponse(url=url, status=429, headers={}, text="rate limited")
+
+    scan = scanner.Scanner(persona, client=BlockedClient())
+    assert scan.scan() == []
+    assert scan.source_health["duckduckgo"] == "blocked (HTTP 429)"
+    assert scan.source_health["github"] == "blocked (HTTP 429)"
+
+
+def test_reddit_404_counts_as_healthy_absence(persona):
+    class MissingUserClient(DemoClient):
+        def request(self, method: str, url: str, **kwargs) -> HttpResponse | None:
+            if "reddit.com" in url:
+                return HttpResponse(url=url, status=404, headers={}, text="{}")
+            return super().request(method, url, **kwargs)
+
+    scan = scanner.Scanner(persona, client=MissingUserClient())
+    assert not [f for f in scan.scan() if f.source == "reddit"]
+    assert scan.source_health["reddit"] == "ok"
+
+
+class _StubElement:
+    """Minimal Playwright element stub: ``clears_after`` fills get wiped."""
+
+    def __init__(self, *, visible: bool = True, editable: bool = True, clears_after: int = 0) -> None:
+        self.visible, self.editable, self.clears_after = visible, editable, clears_after
+        self.value = ""
+        self.fills = 0
+
+    def is_visible(self) -> bool:
+        return self.visible
+
+    def is_editable(self) -> bool:
+        return self.editable
+
+    def input_value(self) -> str:
+        return self.value
+
+    def fill(self, value: str) -> None:
+        self.fills += 1
+        self.value = "" if self.fills <= self.clears_after else value
+
+
+class _StubPage:
+    def __init__(self, elements: list[_StubElement]) -> None:
+        self.elements = elements
+
+    def query_selector_all(self, selector: str) -> list[_StubElement]:
+        return self.elements
+
+
+def test_fill_field_skips_hidden_inputs_and_reports_success():
+    hidden = _StubElement(visible=False)
+    real = _StubElement()
+    page = _StubPage([hidden, real])
+    assert optout._fill_field(page, "input", "me@example.com", key="email", broker="spokeo")
+    assert hidden.value == "" and real.value == "me@example.com"
+
+
+def test_fill_field_reports_failure_when_value_does_not_stick():
+    wiped = _StubElement(clears_after=99)
+    assert not optout._fill_field(_StubPage([wiped]), "input", "me@example.com", key="email", broker="spokeo")
 
 
 def test_scan_respects_source_toggles(persona):

@@ -159,6 +159,15 @@ def scan(target: str | None, since: str | None, no_notify: bool) -> None:
             raise click.BadParameter(str(exc), param_hint="--since") from exc
 
     console.print(_findings_table(shown, f"{len(shown)} finding(s)"))
+    degraded = {s: state for s, state in scanner.source_health.items() if state != "ok"}
+    if degraded:
+        health = Table(title="sources that did not answer", title_style="yellow")
+        health.add_column("source", style="cyan")
+        health.add_column("state", style="yellow")
+        for source, state in sorted(degraded.items()):
+            health.add_row(source, state)
+        console.print(health)
+        console.print("[yellow]zero findings from these sources does not mean you are clean[/yellow]")
     console.print(f"total tracked exposures: {len(all_findings)} | new this run: {len(fresh)}")
     if fresh and not no_notify:
         Notifier(cfg.settings.notifier).notify(

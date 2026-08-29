@@ -92,8 +92,12 @@ Findings are appended to `data/findings.json` (source, url, type, matched
 data, timestamp, screenshot path, removal status) and deduplicated across runs,
 so `scan` only reports genuinely new exposures.
 
-Unauthenticated GitHub code search is heavily rate limited and often returns
-403 — ScrubPup logs that and moves on rather than failing the scan.
+Public endpoints throttle aggressively, especially from datacenter/VPN IPs:
+unauthenticated GitHub code search returns 403, DuckDuckGo answers 202 with a
+challenge page, and Reddit blocks non-browser clients. ScrubPup keeps scanning
+and then prints a `sources that did not answer` table, because zero findings
+from a blocked source is not the same as being clean. Run scans from a
+residential connection for meaningful coverage.
 
 ### Opting out
 
@@ -108,8 +112,11 @@ mostly produce failures you'd never notice. Instead:
   citing GDPR Art. 17 / CCPA 1798.105 — review it and send it from your mail
   client.
 - **form-based brokers** with `--interactive` open in a real browser
-  (Playwright) with the fields it recognises pre-filled and a screenshot
-  captured; you solve the CAPTCHA and click submit.
+  (Playwright, headed — brokers serve a stripped page to headless Chromium)
+  with the fields it recognises pre-filled and a screenshot captured; you solve
+  the CAPTCHA and click submit. Prefills are verified after page hydration and
+  refilled if the page wipes them, and the reported field list only names
+  fields whose value actually stuck.
 
 Every request is tracked in `data/optout_requests.json` with its status
 (`prepared` / `submitted` / `confirmed` / `failed`).
